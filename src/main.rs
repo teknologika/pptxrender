@@ -1,7 +1,7 @@
 use clap::Parser;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::io::Write;
 
 const APPLESCRIPT: &str = r#"
 use framework "Foundation"
@@ -71,7 +71,10 @@ end run
 "#;
 
 #[derive(Parser, Debug)]
-#[command(name = "pptxrender", about = "Render PPTX to slide PNGs using PowerPoint + PDFKit")]
+#[command(
+    name = "pptxrender",
+    about = "Render PPTX to slide PNGs using PowerPoint + PDFKit"
+)]
 struct Args {
     #[arg(long)]
     in_path: PathBuf,
