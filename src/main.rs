@@ -1,4 +1,6 @@
-use clap::Parser;
+use anyhow::{Context, Result};
+use clap::{ArgAction, Parser};
+use serde::Deserialize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -11,7 +13,7 @@ use scripting additions
 
 on run argv
   if (count of argv) < 3 then
-    error "usage: pptxrender <pptxPath> <outDir> <scale>"
+    error "pptxrender requires an input file, output directory, and scale"
   end if
 
   set pptxPath to item 1 of argv
@@ -73,25 +75,116 @@ end run
 #[derive(Parser, Debug)]
 #[command(
     name = "pptxrender",
-    about = "Render PPTX to slide PNGs using PowerPoint + PDFKit"
+    about = "Render PPTX to slide PNGs using PowerPoint + PDFKit",
+    help_template = "usage: pptxrender --in-path <file.pptx> --out-path <out-path> [--scale 2.0] [--transparent-background] [--dark-mode]\n   or: pptxrender --json '{\"inPath\":\"file.pptx\",\"outPath\":\"out-path\",\"scale\":2,\"transparentBackground\":true,\"darkMode\":false}'\n\n{about-section}\n\n{all-args}\n"
 )]
-struct Args {
-    #[arg(long)]
-    in_path: PathBuf,
+struct CliArgs {
+    #[arg(long, value_name = "JSON", help = "Read arguments from a JSON object")]
+    json: Option<String>,
 
-    #[arg(long)]
-    out_dir: PathBuf,
+    #[arg(long, value_name = "FILE.PPTX", help = "Input PPTX file")]
+    in_path: Option<PathBuf>,
 
-    #[arg(long, default_value_t = 2.0)]
-    scale: f64,
+    #[arg(
+        long = "out-path",
+        alias = "out-dir",
+        value_name = "DIR",
+        help = "Destination directory for rendered slide images"
+    )]
+    out_path: Option<PathBuf>,
+
+    #[arg(long, value_name = "SCALE", help = "Render scale multiplier")]
+    scale: Option<f64>,
+
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        help = "Accept transparentBackground from CLI or JSON"
+    )]
+    transparent_background: bool,
+
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        help = "Accept darkMode from CLI or JSON"
+    )]
+    dark_mode: bool,
 }
 
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+#[derive(Debug, Deserialize, Default)]
+struct JsonArgs {
+    #[serde(rename = "inPath")]
+    in_path: Option<PathBuf>,
+    #[serde(rename = "outPath")]
+    out_path: Option<PathBuf>,
+    #[serde(rename = "outDir")]
+    out_dir: Option<PathBuf>,
+    scale: Option<f64>,
+    #[serde(rename = "transparentBackground")]
+    transparent_background: Option<bool>,
+    #[serde(rename = "darkMode")]
+    dark_mode: Option<bool>,
+}
+
+#[derive(Debug)]
+struct Args {
+    in_path: PathBuf,
+    out_path: PathBuf,
+    scale: f64,
+    transparent_background: bool,
+    dark_mode: bool,
+}
+
+fn resolve_args(cli: CliArgs) -> Result<Args> {
+    let json_args = match cli.json {
+        Some(payload) => Some(
+            serde_json::from_str::<JsonArgs>(&payload).context("failed to parse --json payload")?,
+        ),
+        None => None,
+    };
+
+    let json = json_args.as_ref();
+    let in_path = cli
+        .in_path
+        .or_else(|| json.and_then(|args| args.in_path.clone()))
+        .context("missing input path. Pass --in-path or include inPath in --json")?;
+
+    let out_path = cli
+        .out_path
+        .or_else(|| json.and_then(|args| args.out_path.clone().or_else(|| args.out_dir.clone())))
+        .context(
+            "missing output path. Pass --out-path/--out-dir or include outPath/outDir in --json",
+        )?;
+
+    let scale = cli
+        .scale
+        .or_else(|| json.and_then(|args| args.scale))
+        .unwrap_or(2.0);
+
+    let transparent_background = cli.transparent_background
+        || json
+            .and_then(|args| args.transparent_background)
+            .unwrap_or(false);
+
+    let dark_mode = cli.dark_mode || json.and_then(|args| args.dark_mode).unwrap_or(false);
+
+    Ok(Args {
+        in_path,
+        out_path,
+        scale,
+        transparent_background,
+        dark_mode,
+    })
+}
+
+fn main() -> Result<()> {
+    let cli = CliArgs::parse();
+    let args = resolve_args(cli)?;
 
     let in_abs = std::fs::canonicalize(&args.in_path)?;
-    std::fs::create_dir_all(&args.out_dir)?;
-    let out_abs = std::fs::canonicalize(&args.out_dir)?;
+    std::fs::create_dir_all(&args.out_path)?;
+    let out_abs = std::fs::canonicalize(&args.out_path)?;
+    let _ = (args.transparent_background, args.dark_mode);
 
     let mut child = Command::new("osascript")
         .arg("-")

@@ -45,7 +45,17 @@ Binary will be located at `target/release/pptxrender`.
 ## Usage
 
 ``` bash
-pptxrender   --in-path deck.pptx   --out-dir renders   --scale 2.0
+pptxrender --in-path deck.pptx --out-path renders --scale 2.0
+```
+
+``` bash
+pptxrender --json '{
+  "inPath": "deck.pptx",
+  "outPath": "renders",
+  "scale": 2,
+  "transparentBackground": false,
+  "darkMode": false
+}'
 ```
 
 Output:
@@ -58,11 +68,14 @@ Output:
 
 ### Arguments
 
-  Flag          Description
-  ------------- -----------------------------------------
-  `--in-path`   Input PPTX file
-  `--out-dir`   Destination directory for images
-  `--scale`     Render scale multiplier (default `2.0`)
+  Flag                      Description
+  ------------------------  --------------------------------------------------
+  `--in-path`               Input PPTX file
+  `--out-path`              Destination directory for images
+  `--out-dir`               Alias for `--out-path`
+  `--scale`                 Render scale multiplier (default `2.0`)
+  `--transparent-background` Accepted in CLI/JSON for compatibility
+  `--dark-mode`              Accepted in CLI/JSON for compatibility
 
 Higher scale produces higher resolution images.
 
